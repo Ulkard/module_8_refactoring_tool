@@ -1,12 +1,8 @@
 #pragma once
 #include "clang/ASTMatchers/ASTMatchFinder.h"
-#include "clang/ASTMatchers/ASTMatchers.h"
-#include "clang/Frontend/FrontendActions.h"
 #include "clang/Rewrite/Core/Rewriter.h"
-#include "clang/Tooling/CommonOptionsParser.h"
 #include "clang/Tooling/Refactoring.h"
 #include "clang/Tooling/Tooling.h"
-#include "llvm/Support/CommandLine.h"
 
 #include <unordered_set>
 
@@ -35,28 +31,4 @@ private:
         virtual_dtor_locations_;  // Для хранения позиций деструкторов, к которым уже добавлен virtual
 
     bool trySaveLocation(const clang::CXXRecordDecl *Dtor, clang::SourceManager &SM);
-};
-
-class ComplexConsumer : public clang::ASTConsumer {
-public:
-    // Конструктор принимает Rewriter для изменения кода.
-    explicit ComplexConsumer(clang::Rewriter &Rewrite);
-    // Метод HandleTranslationUnit вызывается для каждого файла.
-    void HandleTranslationUnit(clang::ASTContext &Context) override;
-
-private:
-    RefactorHandler Handler;                  // Обработчик матчеров.
-    clang::ast_matchers::MatchFinder Finder;  // MatchFinder для поиска узлов AST.
-};
-
-class CodeRefactorAction : public clang::ASTFrontendAction {
-public:
-    // Returns our ASTConsumer per translation unit.
-    virtual std::unique_ptr<clang::ASTConsumer> CreateASTConsumer(clang::CompilerInstance &CI,
-                                                                  clang::StringRef file) override;
-    virtual bool BeginSourceFileAction(clang::CompilerInstance &CI) override;
-    virtual void EndSourceFileAction() override;
-
-private:
-    clang::Rewriter RewriterForCodeRefactor;
 };

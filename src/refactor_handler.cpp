@@ -1,26 +1,13 @@
-#include "clang/ASTMatchers/ASTMatchFinder.h"
-#include "clang/ASTMatchers/ASTMatchers.h"
-#include "clang/Frontend/FrontendActions.h"
-#include "clang/Rewrite/Core/Rewriter.h"
-#include "clang/Tooling/CommonOptionsParser.h"
-#include "clang/Tooling/Refactoring.h"
-#include "clang/Tooling/Tooling.h"
-#include "llvm/Support/CommandLine.h"
 #include <clang/AST/DeclCXX.h>
 #include <clang/AST/StmtCXX.h>
 #include <clang/Basic/SourceLocation.h>
-#include <iostream>
 
+#include "refactor_handler.h"
 #include <clang/AST/Decl.h>
-#include <unordered_set>
-
-#include "RefactorTool.h"
 
 using namespace clang;
 using namespace clang::ast_matchers;
 using namespace clang::tooling;
-
-static llvm::cl::OptionCategory ToolCategory("refactor-tool options");
 
 // Метод run вызывается для каждого совпадения с матчем.
 // Мы проверяем тип совпадения по bind-именам и применяем рефакторинг.
@@ -128,60 +115,4 @@ void RefactorHandler::handle_crange_for(const CXXForRangeStmt *for_stmt, Diagnos
     rewriter_.InsertTextBefore(loop_var->getLocation(), "&");
     const unsigned successDiagID = Diag.getCustomDiagID(DiagnosticsEngine::Remark, "added &");
     Diag.Report(loop_var->getLocation(), successDiagID);
-}
-
-// матчеры для поиска узлов AST
-auto NvDtorMatcher() {
-    return cxxRecordDecl(unless(isDerivedFrom(anything())), has(cxxRecordDecl()),
-                         hasDescendant(cxxDestructorDecl(unless(anyOf(isVirtual(), isImplicit())))))
-        .bind("nonVirtualDtor");
-}
-
-auto NoOverrideMatcher() { return cxxMethodDecl(isOverride(), unless(isImplicit())).bind("missingOverride"); }
-
-auto NoRefConstVarInRangeLoopMatcher() {
-    return cxxForRangeStmt(hasLoopVariable(varDecl(hasType(isConstQualified())))).bind("NoRefConstVarInRangeLoop");
-}
-
-// Конструктор принимает Rewriter для изменения кода.
-ComplexConsumer::ComplexConsumer(Rewriter &Rewrite) : Handler(Rewrite) {
-    // Создаем MatchFinder и добавляем матчеры.
-    Finder.addMatcher(NvDtorMatcher(), &Handler);
-    Finder.addMatcher(NoOverrideMatcher(), &Handler);
-    Finder.addMatcher(NoRefConstVarInRangeLoopMatcher(), &Handler);
-}
-
-// Метод HandleTranslationUnit вызывается для каждого файла.
-void ComplexConsumer::HandleTranslationUnit(ASTContext &Context) { Finder.matchAST(Context); }
-
-std::unique_ptr<ASTConsumer> CodeRefactorAction::CreateASTConsumer(CompilerInstance &CI, StringRef file) {
-    RewriterForCodeRefactor.setSourceMgr(CI.getSourceManager(), CI.getLangOpts());
-    return std::make_unique<ComplexConsumer>(RewriterForCodeRefactor);
-}
-
-bool CodeRefactorAction::BeginSourceFileAction(CompilerInstance &CI) {
-    // Инициализируем Rewriter для рефакторинга.
-    RewriterForCodeRefactor.setSourceMgr(CI.getSourceManager(), CI.getLangOpts());
-    return true;  // Возвращаем true, чтобы продолжить обработку файла.
-}
-
-void CodeRefactorAction::EndSourceFileAction() {
-    // Применяем изменения в файле.
-    if (RewriterForCodeRefactor.overwriteChangedFiles()) {
-        llvm::errs() << "Error applying changes to files.\n";
-    }
-}
-
-int main(int argc, const char **argv) {
-    // Парсер опций: Обрабатывает флаги командной строки, компиляционные базы данных.
-    auto ExpectedParser = CommonOptionsParser::create(argc, argv, ToolCategory);
-    if (!ExpectedParser) {
-        llvm::errs() << ExpectedParser.takeError();
-        return 1;
-    }
-    CommonOptionsParser &OptionsParser = ExpectedParser.get();
-    // Создаем ClangTool
-    ClangTool Tool(OptionsParser.getCompilations(), OptionsParser.getSourcePathList());
-    // Запускаем RefactorAction.
-    return Tool.run(newFrontendActionFactory<CodeRefactorAction>().get());
 }
